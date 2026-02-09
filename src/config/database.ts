@@ -1,0 +1,17 @@
+import { Sequelize } from 'sequelize';
+import dotenv from 'dotenv';
+
+dotenv.config();
+
+const sequelize = new Sequelize(
+  process.env.DB_NAME || 'vou_falar_com_meu_socio',
+  process.env.DB_USER || 'postgres',
+  process.env.DB_PASSWORD || 'postgres',
+  {
+    host: process.env.DB_HOST || 'postgres',
+    dialect: 'postgres',
+    logging: false,
+  }
+);
+
+export default sequelize;
