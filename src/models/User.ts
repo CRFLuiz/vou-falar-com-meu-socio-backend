@@ -4,10 +4,8 @@ import bcrypt from 'bcryptjs';
 
 interface UserAttributes {
   id: number;
-  name: string;
   email: string;
   password_hash: string;
-  professional_title?: string;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -16,10 +14,8 @@ interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'create
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   public id!: number;
-  public name!: string;
   public email!: string;
   public password_hash!: string;
-  public professional_title!: string;
   public readonly created_at!: Date;
   public readonly updated_at!: Date;
 
@@ -35,10 +31,6 @@ User.init(
       autoIncrement: true,
       primaryKey: true,
     },
-    name: {
-      type: DataTypes.STRING,
-      allowNull: false,
-    },
     email: {
       type: DataTypes.STRING,
       allowNull: false,
@@ -50,10 +42,6 @@ User.init(
     password_hash: {
       type: DataTypes.STRING,
       allowNull: false,
-    },
-    professional_title: {
-      type: DataTypes.STRING,
-      allowNull: true,
     },
     created_at: {
       type: DataTypes.DATE,
