@@ -3,10 +3,10 @@ import User from '../models/User';
 
 export const signup = async (req: Request, res: Response) => {
   try {
-    const { name, email, password, professional_title } = req.body;
+    const { email, password } = req.body;
 
-    if (!name || !email || !password) {
-      return res.status(400).json({ message: 'Name, email, and password are required' });
+    if (!email || !password) {
+      return res.status(400).json({ message: 'Email and password are required' });
     }
 
     const existingUser = await User.findOne({ where: { email } });
@@ -16,10 +16,8 @@ export const signup = async (req: Request, res: Response) => {
 
     // Password hashing is handled in the User model hook
     const newUser = await User.create({
-      name,
       email,
       password_hash: password, // The hook will hash this
-      professional_title,
     });
 
     const { password_hash, ...userWithoutPassword } = newUser.toJSON();
