@@ -12,10 +12,8 @@ Represents a registered user.
 
 **Attributes:**
 - `id` (Integer, Primary Key, Auto-increment): Unique identifier.
-- `name` (String, Required): User's full name.
 - `email` (String, Required, Unique): User's email address.
 - `password_hash` (String, Required): Hashed password.
-- `professional_title` (String, Optional): User's professional title.
 - `created_at` (Date): Timestamp of creation.
 - `updated_at` (Date): Timestamp of last update.
 

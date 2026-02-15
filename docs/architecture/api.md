@@ -9,10 +9,8 @@ Registers a new user.
 **Request Body:**
 ```json
 {
-  "name": "John Doe",
   "email": "john@example.com",
-  "password": "securepassword",
-  "professional_title": "Developer"
+  "password": "securepassword"
 }
 ```
 
@@ -22,9 +20,7 @@ Registers a new user.
   "message": "User created successfully",
   "user": {
     "id": 1,
-    "name": "John Doe",
     "email": "john@example.com",
-    "professional_title": "Developer",
     "created_at": "2024-01-01T00:00:00.000Z",
     "updated_at": "2024-01-01T00:00:00.000Z"
   }
@@ -34,7 +30,7 @@ Registers a new user.
 **Response (400 Bad Request):**
 ```json
 {
-  "message": "Name, email, and password are required"
+  "message": "Email and password are required"
 }
 ```
 
