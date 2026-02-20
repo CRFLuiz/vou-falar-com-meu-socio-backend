@@ -6,16 +6,26 @@ interface UserAttributes {
   id: number;
   email: string;
   password_hash: string;
+  name?: string | null;
+  professional_title?: string | null;
+  professional_description?: string | null;
   created_at?: Date;
   updated_at?: Date;
 }
 
-interface UserCreationAttributes extends Optional<UserAttributes, 'id' | 'created_at' | 'updated_at'> {}
+interface UserCreationAttributes
+  extends Optional<
+    UserAttributes,
+    'id' | 'name' | 'professional_title' | 'professional_description' | 'created_at' | 'updated_at'
+  > {}
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
   public id!: number;
   public email!: string;
   public password_hash!: string;
+  public name!: string | null;
+  public professional_title!: string | null;
+  public professional_description!: string | null;
   public readonly created_at!: Date;
   public readonly updated_at!: Date;
 
@@ -42,6 +52,21 @@ User.init(
     password_hash: {
       type: DataTypes.STRING,
       allowNull: false,
+    },
+    name: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'name',
+    },
+    professional_title: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'professional_title',
+    },
+    professional_description: {
+      type: DataTypes.TEXT,
+      allowNull: true,
+      field: 'professional_description',
     },
     created_at: {
       type: DataTypes.DATE,
