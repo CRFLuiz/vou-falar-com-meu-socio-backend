@@ -9,6 +9,10 @@ interface UserAttributes {
   name?: string | null;
   professional_title?: string | null;
   professional_description?: string | null;
+  rate?: string | null;
+  hours_per_day?: string | null;
+  days_per_week?: number | null;
+  level?: string | null;
   created_at?: Date;
   updated_at?: Date;
 }
@@ -16,7 +20,16 @@ interface UserAttributes {
 interface UserCreationAttributes
   extends Optional<
     UserAttributes,
-    'id' | 'name' | 'professional_title' | 'professional_description' | 'created_at' | 'updated_at'
+    | 'id'
+    | 'name'
+    | 'professional_title'
+    | 'professional_description'
+    | 'rate'
+    | 'hours_per_day'
+    | 'days_per_week'
+    | 'level'
+    | 'created_at'
+    | 'updated_at'
   > {}
 
 class User extends Model<UserAttributes, UserCreationAttributes> implements UserAttributes {
@@ -26,6 +39,10 @@ class User extends Model<UserAttributes, UserCreationAttributes> implements User
   public name!: string | null;
   public professional_title!: string | null;
   public professional_description!: string | null;
+  public rate!: string | null;
+  public hours_per_day!: string | null;
+  public days_per_week!: number | null;
+  public level!: string | null;
   public readonly created_at!: Date;
   public readonly updated_at!: Date;
 
@@ -67,6 +84,26 @@ User.init(
       type: DataTypes.TEXT,
       allowNull: true,
       field: 'professional_description',
+    },
+    rate: {
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true,
+      field: 'rate',
+    },
+    hours_per_day: {
+      type: DataTypes.DECIMAL(4, 2),
+      allowNull: true,
+      field: 'hours_per_day',
+    },
+    days_per_week: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
+      field: 'days_per_week',
+    },
+    level: {
+      type: DataTypes.STRING,
+      allowNull: true,
+      field: 'level',
     },
     created_at: {
       type: DataTypes.DATE,
