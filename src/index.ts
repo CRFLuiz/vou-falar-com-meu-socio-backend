@@ -4,6 +4,7 @@ import dotenv from 'dotenv';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import aiRoutes from './routes/aiRoutes';
+import projectRoutes from './routes/projectRoutes';
 import sequelize from './config/database';
 
 dotenv.config();
@@ -18,6 +19,7 @@ app.use(express.json());
 app.use('/auth', authRoutes);
 app.use('/users', userRoutes);
 app.use('/ai', aiRoutes);
+app.use('/projects', projectRoutes);
 
 app.get('/', (req, res) => {
   res.json({ message: 'Backend is running!' });
