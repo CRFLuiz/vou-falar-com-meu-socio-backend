@@ -375,9 +375,11 @@ class ProjectController {
       
       if (!project) return res.status(404).json({ message: 'Project not found' });
       if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.architecture_data) return res.status(400).json({ message: 'Architecture data required' });
+      if (!project.discovery_data || !project.architecture_data) {
+        return res.status(400).json({ message: 'Discovery and Architecture data required' });
+      }
 
-      const engineeringData = await generateStage4_Engineering(project.architecture_data);
+      const engineeringData = await generateStage4_Engineering(project.discovery_data, project.architecture_data);
       await project.update({ engineering_data: engineeringData });
       
       return res.status(200).json(project);
@@ -395,11 +397,11 @@ class ProjectController {
       
       if (!project) return res.status(404).json({ message: 'Project not found' });
       if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.discovery_data || !project.architecture_data || !project.engineering_data) {
-        return res.status(400).json({ message: 'Discovery, Architecture, and Engineering data required' });
+      if (!project.risk_analysis_data || !project.engineering_data) {
+        return res.status(400).json({ message: 'Risk Analysis and Engineering data required' });
       }
 
-      const riskIntelData = await generateStage5_RiskIntel(project.discovery_data, project.architecture_data, project.engineering_data);
+      const riskIntelData = await generateStage5_RiskIntel(project.risk_analysis_data, project.engineering_data);
       await project.update({ risk_intel_data: riskIntelData });
       
       return res.status(200).json(project);
@@ -439,9 +441,11 @@ class ProjectController {
       
       if (!project) return res.status(404).json({ message: 'Project not found' });
       if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.estimation_data) return res.status(400).json({ message: 'Estimation data required' });
+      if (!project.discovery_data || !project.architecture_data || !project.estimation_data) {
+        return res.status(400).json({ message: 'Discovery, Architecture, and Estimation data required' });
+      }
 
-      const documentsData = await generateStage7_Documents(project);
+      const documentsData = await generateStage7_Documents(project.discovery_data, project.architecture_data, project.estimation_data);
       await project.update({ documents_data: documentsData });
       
       return res.status(200).json(project);
