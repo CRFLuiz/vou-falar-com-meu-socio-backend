@@ -1,6 +1,37 @@
 # Projects API
 
-## Endpoints
+## CRUD Endpoints
+
+### `POST /projects`
+
+Creates a new project manually.
+
+**Request Body:**
+```json
+{
+  "name": "Project Name",
+  "description": "Project Description",
+  "status": "pending"
+}
+```
+
+### `GET /projects`
+
+Retrieves a list of all projects.
+
+### `GET /projects/:id`
+
+Retrieves a single project by ID.
+
+### `PUT /projects/:id`
+
+Updates an existing project.
+
+### `DELETE /projects/:id`
+
+Deletes a project.
+
+## Import Endpoint
 
 ### `POST /projects/import`
 
@@ -28,3 +59,28 @@ Imports a project by scraping a URL and/or using a provided text description. Th
 
 **Response:**
 Returns the created Project object.
+
+## Stage Generation Endpoints
+
+These endpoints trigger AI processing for specific project stages.
+
+### `POST /projects/:id/stage/discovery`
+Generates the Discovery stage data.
+
+### `POST /projects/:id/stage/risk-analysis`
+Generates the Risk Analysis stage data.
+
+### `POST /projects/:id/stage/architecture`
+Generates the Architecture stage data.
+
+### `POST /projects/:id/stage/engineering`
+Generates the Engineering stage data.
+
+### `POST /projects/:id/stage/risk-intel`
+Generates the Risk Intel stage data.
+
+### `POST /projects/:id/stage/estimation`
+Generates the Estimation stage data.
+
+### `POST /projects/:id/stage/documents`
+Generates the Documents stage data.

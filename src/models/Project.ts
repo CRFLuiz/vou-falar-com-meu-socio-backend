@@ -3,6 +3,7 @@ import sequelize from '../config/database';
 
 interface ProjectAttributes {
   id: number;
+  user_id?: number | null;
   name: string;
   description?: string;
   status: string;
@@ -24,6 +25,7 @@ interface ProjectCreationAttributes
   extends Optional<
     ProjectAttributes,
     | 'id'
+    | 'user_id'
     | 'description'
     | 'status'
     | 'discovery_data'
@@ -39,6 +41,7 @@ interface ProjectCreationAttributes
 
 class Project extends Model<ProjectAttributes, ProjectCreationAttributes> implements ProjectAttributes {
   public id!: number;
+  public user_id!: number | null;
   public name!: string;
   public description!: string;
   public status!: string;
@@ -74,6 +77,10 @@ Project.init(
       type: DataTypes.STRING,
       allowNull: false,
       defaultValue: 'pending',
+    },
+    user_id: {
+      type: DataTypes.INTEGER,
+      allowNull: true,
     },
     discovery_data: {
       type: DataTypes.JSONB,

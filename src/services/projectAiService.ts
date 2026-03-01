@@ -60,6 +60,16 @@ export interface ExtractedProjectInfo {
   budget?: string;
   deadline?: string;
   technologies: string[];
+  client_info?: {
+    location?: string;
+    rating?: string;
+    member_since?: string;
+    verification_status?: string;
+  };
+  category?: string;
+  subcategory?: string;
+  bid_count?: string;
+  competitors_info?: string;
 }
 
 // Stage 1: Structured Discovery
@@ -175,8 +185,12 @@ export const extractProjectInfo = async (scrapedText: string): Promise<Extracted
       - Budget
       - Deadline/Duration
       - Required Technologies (array)
+      - Client Information (Location, Rating, Member Since, Verification Status)
+      - Category & Subcategory
+      - Number of Bids/Proposals (Competitors)
+      - Any other relevant competitor info (avg bid, etc)
 
-      Return ONLY a valid JSON object with keys: name, description, budget, deadline, technologies.
+      Return ONLY a valid JSON object with keys: name, description, budget, deadline, technologies, client_info (object), category, subcategory, bid_count, competitors_info.
       If specific fields like budget/deadline are missing, use null.
     `;
     return callAi(systemPrompt, scrapedText);
