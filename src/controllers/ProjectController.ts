@@ -34,6 +34,62 @@ class ProjectController {
     return num;
   }
 
+  private async loadProjectForStage(id: string, userId: number | null) {
+    const isNumericId = Number.isFinite(Number(id)) && String(Number(id)) === String(id);
+
+    if (isNumericId) {
+      const numericId = Number(id);
+      const project = await Project.findByPk(numericId);
+      if (!project) {
+        return { kind: 'not_found' as const };
+      }
+      if (project.user_id && project.user_id !== userId) {
+        return { kind: 'forbidden' as const };
+      }
+      return { kind: 'db' as const, project };
+    }
+
+    let cachedProject: string | null = null;
+    let redisKey: string | null = null;
+
+    if (userId) {
+      redisKey = `project:user:${userId}:${id}`;
+      cachedProject = await redis.get(redisKey);
+    }
+
+    if (!cachedProject) {
+      redisKey = `project:public:${id}`;
+      cachedProject = await redis.get(redisKey);
+    }
+
+    if (!cachedProject) {
+      redisKey = `project:${id}`;
+      cachedProject = await redis.get(redisKey);
+    }
+
+    if (!cachedProject || !redisKey) {
+      return { kind: 'not_found' as const };
+    }
+
+    const project = JSON.parse(cachedProject) as Record<string, unknown>;
+    const projectUserId = typeof project.user_id === 'number' ? project.user_id : null;
+    if (projectUserId && projectUserId !== userId) {
+      return { kind: 'forbidden' as const };
+    }
+
+    return { kind: 'redis' as const, redisKey, project };
+  }
+
+  private async updateRedisProject(redisKey: string, project: Record<string, unknown>, update: Record<string, unknown>) {
+    const next = {
+      ...project,
+      ...update,
+      updated_at: new Date().toISOString(),
+    };
+    await redis.setex(redisKey, 86400, JSON.stringify(next));
+    return next;
+  }
+
   async importProject(req: Request, res: Response) {
     try {
       const { url, text } = req.body;
@@ -311,15 +367,27 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      
-      const discoveryData = await generateStage1_Discovery(project.description);
-      await project.update({ discovery_data: discoveryData });
-      
-      return res.status(200).json(project);
+
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
+
+      const description =
+        loaded.kind === 'db'
+          ? loaded.project.description
+          : typeof loaded.project.description === 'string'
+            ? loaded.project.description
+            : '';
+
+      const discoveryData = await generateStage1_Discovery(description);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ discovery_data: discoveryData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { discovery_data: discoveryData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Discovery error:', error);
       return res.status(500).json({ message: 'Failed to generate discovery data' });
@@ -330,16 +398,22 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.discovery_data) return res.status(400).json({ message: 'Discovery data required' });
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
 
-      const riskData = await generateStage2_RiskScanner(project.discovery_data);
-      await project.update({ risk_analysis_data: riskData });
-      
-      return res.status(200).json(project);
+      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      if (!discoveryData) return res.status(400).json({ message: 'Discovery data required' });
+
+      const riskData = await generateStage2_RiskScanner(discoveryData as any);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ risk_analysis_data: riskData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { risk_analysis_data: riskData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Risk Analysis error:', error);
       return res.status(500).json({ message: 'Failed to generate risk analysis' });
@@ -350,18 +424,25 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.discovery_data || !project.risk_analysis_data) {
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
+
+      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const riskAnalysisData = loaded.kind === 'db' ? loaded.project.risk_analysis_data : loaded.project.risk_analysis_data;
+      if (!discoveryData || !riskAnalysisData) {
         return res.status(400).json({ message: 'Discovery and Risk data required' });
       }
 
-      const architectureData = await generateStage3_Architecture(project.discovery_data, project.risk_analysis_data);
-      await project.update({ architecture_data: architectureData });
-      
-      return res.status(200).json(project);
+      const architectureData = await generateStage3_Architecture(discoveryData as any, riskAnalysisData as any);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ architecture_data: architectureData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { architecture_data: architectureData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Architecture error:', error);
       return res.status(500).json({ message: 'Failed to generate architecture' });
@@ -372,18 +453,25 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.discovery_data || !project.architecture_data) {
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
+
+      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const architectureData = loaded.kind === 'db' ? loaded.project.architecture_data : loaded.project.architecture_data;
+      if (!discoveryData || !architectureData) {
         return res.status(400).json({ message: 'Discovery and Architecture data required' });
       }
 
-      const engineeringData = await generateStage4_Engineering(project.discovery_data, project.architecture_data);
-      await project.update({ engineering_data: engineeringData });
-      
-      return res.status(200).json(project);
+      const engineeringData = await generateStage4_Engineering(discoveryData as any, architectureData as any);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ engineering_data: engineeringData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { engineering_data: engineeringData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Engineering error:', error);
       return res.status(500).json({ message: 'Failed to generate engineering breakdown' });
@@ -394,18 +482,25 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.risk_analysis_data || !project.engineering_data) {
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
+
+      const riskAnalysisData = loaded.kind === 'db' ? loaded.project.risk_analysis_data : loaded.project.risk_analysis_data;
+      const engineeringData = loaded.kind === 'db' ? loaded.project.engineering_data : loaded.project.engineering_data;
+      if (!riskAnalysisData || !engineeringData) {
         return res.status(400).json({ message: 'Risk Analysis and Engineering data required' });
       }
 
-      const riskIntelData = await generateStage5_RiskIntel(project.risk_analysis_data, project.engineering_data);
-      await project.update({ risk_intel_data: riskIntelData });
-      
-      return res.status(200).json(project);
+      const riskIntelData = await generateStage5_RiskIntel(riskAnalysisData as any, engineeringData as any);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ risk_intel_data: riskIntelData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { risk_intel_data: riskIntelData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Risk Intel error:', error);
       return res.status(500).json({ message: 'Failed to generate risk intelligence' });
@@ -416,18 +511,25 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.engineering_data || !project.risk_intel_data) {
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
+
+      const engineeringData = loaded.kind === 'db' ? loaded.project.engineering_data : loaded.project.engineering_data;
+      const riskIntelData = loaded.kind === 'db' ? loaded.project.risk_intel_data : loaded.project.risk_intel_data;
+      if (!engineeringData || !riskIntelData) {
         return res.status(400).json({ message: 'Engineering and Risk Intel data required' });
       }
 
-      const estimationData = await generateStage6_Estimation(project.engineering_data, project.risk_intel_data);
-      await project.update({ estimation_data: estimationData });
-      
-      return res.status(200).json(project);
+      const estimationData = await generateStage6_Estimation(engineeringData as any, riskIntelData as any);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ estimation_data: estimationData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { estimation_data: estimationData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Estimation error:', error);
       return res.status(500).json({ message: 'Failed to generate estimation' });
@@ -438,18 +540,26 @@ class ProjectController {
     try {
       const { id } = req.params;
       const userId = this.getUserId(req);
-      const project = await Project.findByPk(id);
-      
-      if (!project) return res.status(404).json({ message: 'Project not found' });
-      if (project.user_id && project.user_id !== userId) return res.status(403).json({ message: 'Access denied' });
-      if (!project.discovery_data || !project.architecture_data || !project.estimation_data) {
+      const loaded = await this.loadProjectForStage(id, userId);
+      if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
+      if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
+
+      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const architectureData = loaded.kind === 'db' ? loaded.project.architecture_data : loaded.project.architecture_data;
+      const estimationData = loaded.kind === 'db' ? loaded.project.estimation_data : loaded.project.estimation_data;
+      if (!discoveryData || !architectureData || !estimationData) {
         return res.status(400).json({ message: 'Discovery, Architecture, and Estimation data required' });
       }
 
-      const documentsData = await generateStage7_Documents(project.discovery_data, project.architecture_data, project.estimation_data);
-      await project.update({ documents_data: documentsData });
-      
-      return res.status(200).json(project);
+      const documentsData = await generateStage7_Documents(discoveryData as any, architectureData as any, estimationData as any);
+
+      if (loaded.kind === 'db') {
+        await loaded.project.update({ documents_data: documentsData });
+        return res.status(200).json(loaded.project);
+      }
+
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { documents_data: documentsData });
+      return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Documents error:', error);
       return res.status(500).json({ message: 'Failed to generate documents' });
