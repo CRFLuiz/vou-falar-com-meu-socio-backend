@@ -48,7 +48,7 @@ class ProjectController {
       if (url) {
         const scrapedText = await scrapeProjectUrl(url);
         if (scrapedText) {
-          combinedText += `[SOURCE URL: ${url}]\n\n${scrapedText}\n\n`;
+          combinedText += `${scrapedText}\n\n`;
         }
       }
 
@@ -82,6 +82,7 @@ class ProjectController {
           projectInfo.client_info.verification_status
         ].filter(Boolean).join(' | ');
         if (clientDetails) metadata.push(`**Client:** ${clientDetails}`);
+        if (projectInfo.client_info.summary) metadata.push(`**Client Summary:** ${projectInfo.client_info.summary}`);
       }
       if (projectInfo.competitors_info) metadata.push(`**Competitors Info:** ${projectInfo.competitors_info}`);
 

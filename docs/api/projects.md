@@ -55,6 +55,8 @@ Imports a project by scraping a URL and/or using a provided text description. Th
     *   Budget
     *   Deadline
     *   Technologies
+    *   Client Info (Location, Rating, Verification, Summary)
+    *   Competitors Info
 4.  **Logging:** The raw AI response is logged to the console for debugging purposes.
 
 **Response:**

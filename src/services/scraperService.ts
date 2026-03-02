@@ -23,6 +23,24 @@ export const scrapeProjectUrl = async (url: string): Promise<string> => {
     $('iframe').remove();
     $('noscript').remove();
 
+    // Process links to include URLs in text so the AI can see them
+    $('a').each((_, element) => {
+      const el = $(element);
+      const href = el.attr('href');
+      const text = el.text().trim();
+      
+      if (href && text) {
+        try {
+          // Resolve relative URLs
+          const absoluteUrl = new URL(href, url).toString();
+          // Replace link with "Text (URL)" format to make it visible to the AI
+          el.replaceWith(`${text} (Link: ${absoluteUrl})`);
+        } catch (e) {
+          // Ignore invalid URLs
+        }
+      }
+    });
+
     // Extract text from body
     const text = $('body').text().replace(/\s+/g, ' ').trim();
 
