@@ -10,6 +10,7 @@ import {
   generateStage6_Estimation,
   generateStage7_Documents
 } from '../services/projectAiService';
+import { markdownToHtmlService } from '../services/markdownToHtmlService';
 import Project from '../models/Project';
 import redis from '../config/redis';
 import { randomUUID } from 'crypto';
@@ -88,6 +89,93 @@ class ProjectController {
     };
     await redis.setex(redisKey, 86400, JSON.stringify(next));
     return next;
+  }
+
+  private stripRenderedHtml<T extends Record<string, unknown>>(data: T): T {
+    const { rendered_html: _renderedHtml, ...rest } = data;
+    return rest as T;
+  }
+
+  private buildDiscoveryMarkdownReport(projectDescription: string, discoveryData: Record<string, unknown>): string {
+    const business = (discoveryData.business as Record<string, unknown> | undefined) ?? {};
+    const functionalScope = (discoveryData.functional_scope as Record<string, unknown> | undefined) ?? {};
+    const nonFunctional = (discoveryData.non_functional as Record<string, unknown> | undefined) ?? {};
+
+    const inferredSignals = Array.isArray(discoveryData.inferred_signals) ? discoveryData.inferred_signals : [];
+    const missingInformation = Array.isArray(discoveryData.missing_information) ? discoveryData.missing_information : [];
+
+    const buildItems = Array.isArray(functionalScope.build_items) ? functionalScope.build_items : [];
+    const integrations = Array.isArray(functionalScope.integrations) ? functionalScope.integrations : [];
+
+    const jsonBlock = (value: unknown) => `\n\`\`\`json\n${JSON.stringify(value ?? {}, null, 2)}\n\`\`\`\n`;
+
+    const lines: string[] = [];
+    lines.push('# Structured Discovery');
+    lines.push('');
+
+    if (projectDescription.trim().length > 0) {
+      lines.push('## Project Description');
+      lines.push('');
+      lines.push(projectDescription.trim());
+      lines.push('');
+    }
+
+    lines.push('## Business Context');
+    lines.push('');
+    lines.push(`- Objective: ${String(business.objective ?? '')}`);
+    lines.push(`- Initiative Type: ${String(business.initiative_type ?? '')}`);
+    lines.push(`- Target Deadline: ${String(business.deadline ?? '')}`);
+    lines.push(`- Criticality: ${String(business.criticality ?? '')}`);
+    lines.push(`- Explicit: ${String(business.explicit ?? '')}`);
+    lines.push('');
+
+    lines.push('## Functional Scope');
+    lines.push('');
+    lines.push('### Build Items');
+    lines.push('');
+    lines.push(buildItems.length ? buildItems.map((i) => `- ${String(i)}`).join('\n') : '-');
+    lines.push('');
+    lines.push('### Integrations');
+    lines.push('');
+    lines.push(integrations.length ? integrations.map((i) => `- ${String(i)}`).join('\n') : '-');
+    lines.push('');
+    lines.push(`### Migration Required\n\n- ${String(functionalScope.migration_required ?? '')}`);
+    lines.push('');
+
+    lines.push('## Non-Functional Requirements');
+    lines.push('');
+    lines.push('### Performance');
+    lines.push(jsonBlock(nonFunctional.performance));
+    lines.push('### Availability');
+    lines.push(jsonBlock(nonFunctional.availability));
+    lines.push('### Security');
+    lines.push(jsonBlock(nonFunctional.security));
+    lines.push('### Compliance');
+    lines.push(jsonBlock(nonFunctional.compliance));
+
+    lines.push('## Current State (AS-IS)');
+    lines.push(jsonBlock(discoveryData.as_is));
+
+    lines.push('## Constraints');
+    lines.push(jsonBlock(discoveryData.constraints));
+
+    lines.push('## Inferred Signals');
+    lines.push('');
+    lines.push(inferredSignals.length ? inferredSignals.map((s) => `- ${String(s)}`).join('\n') : '-');
+    lines.push('');
+
+    lines.push('## Missing Information');
+    lines.push('');
+    lines.push(missingInformation.length ? missingInformation.map((m) => `- ${String(m)}`).join('\n') : '-');
+    lines.push('');
+
+    lines.push('## Metrics');
+    lines.push('');
+    lines.push(`- Confidence Score: ${String(discoveryData.confidence_score ?? '')}`);
+    lines.push(`- Estimation Risk: ${String(discoveryData.estimation_risk ?? '')}`);
+    lines.push('');
+
+    return lines.join('\n');
   }
 
   async importProject(req: Request, res: Response) {
@@ -380,13 +468,19 @@ class ProjectController {
             : '';
 
       const discoveryData = await generateStage1_Discovery(description);
+      const discoveryMarkdown = this.buildDiscoveryMarkdownReport(description, discoveryData as unknown as Record<string, unknown>);
+      const renderedHtml = markdownToHtmlService.toHtml(discoveryMarkdown);
+      const discoveryDataWithHtml = {
+        ...(discoveryData as unknown as Record<string, unknown>),
+        rendered_html: renderedHtml,
+      };
 
       if (loaded.kind === 'db') {
-        await loaded.project.update({ discovery_data: discoveryData });
+        await loaded.project.update({ discovery_data: discoveryDataWithHtml });
         return res.status(200).json(loaded.project);
       }
 
-      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { discovery_data: discoveryData });
+      const updated = await this.updateRedisProject(loaded.redisKey, loaded.project, { discovery_data: discoveryDataWithHtml });
       return res.status(200).json(updated);
     } catch (error) {
       console.error('Generate Discovery error:', error);
@@ -402,7 +496,10 @@ class ProjectController {
       if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
       if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
 
-      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryDataRaw = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryData = discoveryDataRaw && typeof discoveryDataRaw === 'object'
+        ? this.stripRenderedHtml(discoveryDataRaw as Record<string, unknown>)
+        : discoveryDataRaw;
       if (!discoveryData) return res.status(400).json({ message: 'Discovery data required' });
 
       const riskData = await generateStage2_RiskScanner(discoveryData as any);
@@ -428,7 +525,10 @@ class ProjectController {
       if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
       if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
 
-      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryDataRaw = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryData = discoveryDataRaw && typeof discoveryDataRaw === 'object'
+        ? this.stripRenderedHtml(discoveryDataRaw as Record<string, unknown>)
+        : discoveryDataRaw;
       const riskAnalysisData = loaded.kind === 'db' ? loaded.project.risk_analysis_data : loaded.project.risk_analysis_data;
       if (!discoveryData || !riskAnalysisData) {
         return res.status(400).json({ message: 'Discovery and Risk data required' });
@@ -457,7 +557,10 @@ class ProjectController {
       if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
       if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
 
-      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryDataRaw = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryData = discoveryDataRaw && typeof discoveryDataRaw === 'object'
+        ? this.stripRenderedHtml(discoveryDataRaw as Record<string, unknown>)
+        : discoveryDataRaw;
       const architectureData = loaded.kind === 'db' ? loaded.project.architecture_data : loaded.project.architecture_data;
       if (!discoveryData || !architectureData) {
         return res.status(400).json({ message: 'Discovery and Architecture data required' });
@@ -544,7 +647,10 @@ class ProjectController {
       if (loaded.kind === 'not_found') return res.status(404).json({ message: 'Project not found' });
       if (loaded.kind === 'forbidden') return res.status(403).json({ message: 'Access denied' });
 
-      const discoveryData = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryDataRaw = loaded.kind === 'db' ? loaded.project.discovery_data : loaded.project.discovery_data;
+      const discoveryData = discoveryDataRaw && typeof discoveryDataRaw === 'object'
+        ? this.stripRenderedHtml(discoveryDataRaw as Record<string, unknown>)
+        : discoveryDataRaw;
       const architectureData = loaded.kind === 'db' ? loaded.project.architecture_data : loaded.project.architecture_data;
       const estimationData = loaded.kind === 'db' ? loaded.project.estimation_data : loaded.project.estimation_data;
       if (!discoveryData || !architectureData || !estimationData) {
