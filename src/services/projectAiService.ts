@@ -83,6 +83,17 @@ export interface ExtractedProjectInfo {
   competitors_info?: string;
 }
 
+export type DiscoveryChatIntent = 'clarify' | 'update_context' | 'ready_to_generate';
+
+export interface DiscoveryChatDecision {
+  intent: DiscoveryChatIntent;
+  assistant_message: string;
+  updated_project_name: string | null;
+  updated_project_description: string | null;
+  fields_to_clarify: string[];
+  ready_reason: string | null;
+}
+
 // Stage 1: Structured Discovery
 export interface DiscoveryData {
   business: {
@@ -307,6 +318,92 @@ export const generateStage1_Discovery = async (projectDescription: string): Prom
     }
   `;
   return callAi(systemPrompt, projectDescription);
+};
+
+export const analyzeDiscoveryChatTurn = async ({
+  projectName,
+  projectDescription,
+  conversationHistory,
+  userMessage,
+}: {
+  projectName: string;
+  projectDescription: string;
+  conversationHistory: { role: 'assistant' | 'user'; text: string }[];
+  userMessage: string;
+}): Promise<DiscoveryChatDecision> => {
+  const systemPrompt = `
+You are the Structured Discovery chat orchestrator for a software project.
+Your responsibilities:
+1) Understand if the user wants to add more project details or generate Structured Discovery now.
+2) If details are incomplete/ambiguous, ask objective clarification questions.
+3) If the user provides new details, return an improved full project description.
+4) If the user is ready and there is enough clarity, mark as ready_to_generate.
+
+Rules:
+- Always return valid JSON only.
+- Keep assistant_message concise and practical.
+- Preserve the user's language.
+- If intent is clarify, include missing points in fields_to_clarify.
+- If intent is update_context, set updated_project_description with the full improved description.
+- If intent is ready_to_generate, provide ready_reason.
+- Never use markdown code fences.
+
+Return exactly this JSON schema:
+{
+  "intent": "clarify" | "update_context" | "ready_to_generate",
+  "assistant_message": "string",
+  "updated_project_name": "string | null",
+  "updated_project_description": "string | null",
+  "fields_to_clarify": ["string"],
+  "ready_reason": "string | null"
+}
+  `;
+
+  const historyText = conversationHistory
+    .slice(-20)
+    .map((entry, index) => `${index + 1}. ${entry.role.toUpperCase()}: ${entry.text}`)
+    .join('\n');
+
+  const userContent = `
+Current project name:
+${projectName}
+
+Current project description:
+${projectDescription}
+
+Conversation history:
+${historyText || 'No previous messages.'}
+
+Latest user message:
+${userMessage}
+  `;
+
+  const response = await callAi(systemPrompt, userContent);
+  const normalizedIntent = String(response.intent ?? '').trim();
+  const intent: DiscoveryChatIntent =
+    normalizedIntent === 'ready_to_generate'
+      ? 'ready_to_generate'
+      : normalizedIntent === 'update_context'
+        ? 'update_context'
+        : 'clarify';
+
+  return {
+    intent,
+    assistant_message: String(response.assistant_message ?? ''),
+    updated_project_name: typeof response.updated_project_name === 'string' && response.updated_project_name.trim().length > 0
+      ? response.updated_project_name.trim()
+      : null,
+    updated_project_description:
+      typeof response.updated_project_description === 'string' && response.updated_project_description.trim().length > 0
+        ? response.updated_project_description.trim()
+        : null,
+    fields_to_clarify: Array.isArray(response.fields_to_clarify)
+      ? response.fields_to_clarify.map((item: unknown) => String(item))
+      : [],
+    ready_reason: typeof response.ready_reason === 'string' && response.ready_reason.trim().length > 0
+      ? response.ready_reason.trim()
+      : null,
+  };
 };
 
 export const generateStage2_RiskScanner = async (discoveryData: DiscoveryData): Promise<RiskAnalysisData> => {

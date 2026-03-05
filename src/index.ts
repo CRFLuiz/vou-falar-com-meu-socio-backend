@@ -1,16 +1,19 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
+import http from 'http';
 import authRoutes from './routes/authRoutes';
 import userRoutes from './routes/userRoutes';
 import aiRoutes from './routes/aiRoutes';
 import projectRoutes from './routes/projectRoutes';
 import sequelize from './config/database';
+import { registerDiscoveryChatSocketService } from './services/discoveryChatSocketService';
 
 dotenv.config();
 
 const app = express();
 const port = process.env.PORT || 3000;
+const server = http.createServer(app);
 
 app.use(cors({
   origin: process.env.CORS_ORIGIN || '*',
@@ -31,6 +34,8 @@ app.get('/health', (req, res) => {
   res.status(200).json({ status: 'ok', timestamp: new Date().toISOString() });
 });
 
+registerDiscoveryChatSocketService(server);
+
 // Sync database and start server
 const startServer = async () => {
   try {
@@ -42,7 +47,7 @@ const startServer = async () => {
     await sequelize.sync({ alter: true });
     console.log('Database synced.');
 
-    app.listen(port, () => {
+    server.listen(port, () => {
       console.log(`Server is running on port ${port}`);
     });
   } catch (error) {
